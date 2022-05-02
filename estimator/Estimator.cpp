@@ -9,6 +9,7 @@
 #include <gtsam/navigation/CombinedImuFactor.h>
 #include <gtsam/navigation/ImuFactor.h>
 #include <gtsam/navigation/NavState.h>
+#include <gtsam/nonlinear/ISAM2UpdateParams.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/slam/BetweenFactor.h>
@@ -17,6 +18,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <string>
 
 /*****************************************************************************/
 
@@ -49,7 +51,7 @@ ISAM2 get_isam2()
 {
     ISAM2Params params;
     params.relinearizeThreshold = 0.1;
-    params.relinearizeSkip = 1;
+    params.relinearizeSkip = 10;
 
     params.print( "ISAM2 parameters: " );
 
@@ -136,7 +138,6 @@ Estimator::Estimator( double current_time, bool use_cam )
     : m_use_cam( use_cam ),
       m_last_cam_time( 4908.79171 ), // TODO update
       m_last_imu_time( current_time ),
-      m_output_positions{ "positions.csv" },
       m_isam2( get_isam2() ),
       m_values( get_values( get_prior_state() ) ),
       m_graph( get_graph( get_prior_state() ) ),
@@ -164,6 +165,10 @@ void Estimator::add_measurement( const IMUMeasurement &measurement )
 
 void Estimator::add_measurement( const StereoMeasurement &measurement )
 {
+    constexpr double PI = 3.14159265359;
+    Rot3 rotation = Rot3::RzRyRx( -PI / 2, 0, -PI / 2 );
+    Pose3 body_P_sensor( rotation, Point3() );
+
     // TODO check if things are in correct order (IMU cam)
     if ( measurement.time > m_last_cam_time )
     {
@@ -179,7 +184,18 @@ void Estimator::add_measurement( const StereoMeasurement &measurement )
 
         m_smart_factors [ measurement.landmark_id ] =
             SmartStereoProjectionPoseFactor::shared_ptr(
-                new SmartStereoProjectionPoseFactor( noise, params ) );
+                new SmartStereoProjectionPoseFactor(
+                    noise,
+                    params,
+                    body_P_sensor ) );
+
+        m_graph.add( m_smart_factors [ measurement.landmark_id ] );
+        m_last_added_landmark.push_back( measurement.landmark_id );
+    }
+    else
+    {
+        FactorIndex index = m_landmark_factor_map [ measurement.landmark_id ];
+        m_smart_factors_update_map [ index ].insert( X( m_frame ) );
     }
 
     m_smart_factors [ measurement.landmark_id ]->add(
@@ -224,19 +240,24 @@ void Estimator::optimize()
     m_values.insert( V( m_frame ), m_estimated_state.v() );
     m_values.insert( B( m_frame ), m_previous_bias );
 
-    for ( auto const &[ _, smart_factor_ptr ] : m_smart_factors )
-    {
-        if ( m_use_cam )
-        {
-            m_graph.add( smart_factor_ptr );
-        }
-    }
+    ISAM2UpdateParams params;
+    params.newAffectedKeys = std::move( m_smart_factors_update_map );
+    m_smart_factors_update_map = FastMap< FactorIndex, KeySet >();
 
-    m_isam2.update( m_graph, m_values );
+    auto result = m_isam2.update( m_graph, m_values, params );
     m_isam2.update();
+
+    size_t i = 0;
+    for ( const auto &indice : result.newFactorsIndices )
+    {
+        size_t landmark_id = m_last_added_landmark [ i ];
+        m_landmark_factor_map [ landmark_id ] = indice;
+        i++;
+    }
 
     m_graph.resize( 0 );
     m_values.clear();
+    m_last_added_landmark.clear();
 
     Values estimate = m_isam2.calculateEstimate();
     m_previous_state = NavState(
@@ -246,12 +267,25 @@ void Estimator::optimize()
     m_preintegration->resetIntegrationAndSetBias( m_previous_bias );
 
     Point3 position = estimate.at< Pose3 >( X( m_frame ) ).translation();
-    auto quat = estimate.at< Pose3 >( X( m_frame ) ).rotation().toQuaternion();
-
-    m_output_positions << position.x() << ' ' << position.y() << ' '
-                       << position.z() << ' ' << quat.w() << ' ' << quat.x()
-                       << ' ' << quat.y() << ' ' << quat.z() << endl;
-
     cout << "Position: (" << position.x() << ", " << position.y() << ", "
          << position.z() << ")\n";
+}
+
+/*****************************************************************************/
+
+void Estimator::export_last_estimate( const string &filename )
+{
+    ofstream output( filename );
+    Values last_estimate = m_isam2.calculateEstimate();
+
+    for ( size_t i = 0; i <= m_frame; i++ )
+    {
+        Pose3 pose = last_estimate.at< Pose3 >( X( i ) );
+        auto position = pose.translation();
+        auto quat = pose.rotation().toQuaternion();
+
+        output << position.x() << ' ' << position.y() << ' ' << position.z()
+               << ' ' << quat.w() << ' ' << quat.x() << ' ' << quat.y() << ' '
+               << quat.z() << endl;
+    }
 }

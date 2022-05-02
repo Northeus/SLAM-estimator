@@ -14,6 +14,7 @@
 #include <fstream>
 #include <map>
 #include <memory>
+#include <string>
 
 /*****************************************************************************/
 
@@ -26,6 +27,8 @@ public:
 
     void add_measurement( const StereoMeasurement &measurement );
 
+    void export_last_estimate( const string &filename );
+
 private:
     void optimize();
 
@@ -33,7 +36,10 @@ private:
     size_t m_frame = 0;
     double m_last_cam_time;
     double m_last_imu_time;
-    ofstream m_output_positions;
+    gtsam::FastMap< gtsam::FactorIndex, gtsam::KeySet >
+        m_smart_factors_update_map;
+    std::map< size_t, gtsam::FactorIndex > m_landmark_factor_map;
+    std::vector< size_t > m_last_added_landmark;
     gtsam::ISAM2 m_isam2;
     gtsam::Values m_values;
     gtsam::NonlinearFactorGraph m_graph;

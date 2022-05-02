@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <string>
 
 /*****************************************************************************/
 
@@ -76,4 +77,6 @@ int main()
             }
         }
     }
+
+    estimator.export_last_estimate( "positions.csv" );
 }
