@@ -14,6 +14,11 @@ add_executable(estimator estimator/main.cpp)
 target_link_libraries(estimator gtsam)
 
 file(
+    COPY ${CMAKE_CURRENT_SOURCE_DIR}/data/imu.txt
+    DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+file(
     COPY ${CMAKE_CURRENT_SOURCE_DIR}/data/projections.csv
     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
 )
