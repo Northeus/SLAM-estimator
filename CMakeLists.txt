@@ -10,7 +10,12 @@ endif()
 
 find_package(GTSAM REQUIRED)
 
-add_executable(estimator estimator/main.cpp)
+add_executable(estimator
+    estimator/main.cpp
+    estimator/Measurements.h
+    estimator/Estimator.h
+    estimator/Estimator.cpp
+)
 target_link_libraries(estimator gtsam)
 
 file(
