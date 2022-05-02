@@ -1,9 +1,11 @@
 #include "Estimator.h"
 #include "Measurements.h"
 
+#include <gtsam/geometry/Cal3_S2Stereo.h>
 #include <gtsam/geometry/Point3.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/geometry/Rot3.h>
+#include <gtsam/geometry/StereoPoint2.h>
 #include <gtsam/navigation/CombinedImuFactor.h>
 #include <gtsam/navigation/ImuFactor.h>
 #include <gtsam/navigation/NavState.h>
@@ -12,6 +14,7 @@
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam_unstable/slam/SmartStereoProjectionPoseFactor.h>
 
+#include <fstream>
 #include <iostream>
 #include <memory>
 
@@ -45,7 +48,7 @@ NavState get_prior_state()
 ISAM2 get_isam2()
 {
     ISAM2Params params;
-    params.relinearizeThreshold = 0.02;
+    params.relinearizeThreshold = 0.1;
     params.relinearizeSkip = 1;
 
     params.print( "ISAM2 parameters: " );
@@ -113,15 +116,34 @@ shared_ptr< PreintegratedImuMeasurements > get_preintegration()
 
 /*****************************************************************************/
 
-Estimator::Estimator( double current_time )
-    : m_last_cam_time( 4908.79171 ), // TODO update
+Cal3_S2Stereo::shared_ptr get_cam_calibration()
+{
+    // TODO: add config
+    double fx = 420;
+    double fy = 420;
+    double skew = 0.0;
+    double cx = 320;
+    double cy = 240;
+    double baseline = 0.2;
+
+    return Cal3_S2Stereo::shared_ptr(
+        new Cal3_S2Stereo( fx, fy, skew, cx, cy, baseline ) );
+}
+
+/*****************************************************************************/
+
+Estimator::Estimator( double current_time, bool use_cam )
+    : m_use_cam( use_cam ),
+      m_last_cam_time( 4908.79171 ), // TODO update
       m_last_imu_time( current_time ),
+      m_output_positions{ "positions.csv" },
       m_isam2( get_isam2() ),
       m_values( get_values( get_prior_state() ) ),
       m_graph( get_graph( get_prior_state() ) ),
       m_preintegration( get_preintegration() ),
       m_previous_state( get_prior_state() ),
-      m_estimated_state( get_prior_state() )
+      m_estimated_state( get_prior_state() ),
+      m_cam_calibration( get_cam_calibration() )
 {
 }
 
@@ -143,7 +165,6 @@ void Estimator::add_measurement( const IMUMeasurement &measurement )
 void Estimator::add_measurement( const StereoMeasurement &measurement )
 {
     // TODO check if things are in correct order (IMU cam)
-    // TODO try higher frequency for camera?
     if ( measurement.time > m_last_cam_time )
     {
         m_last_cam_time = measurement.time;
@@ -161,7 +182,10 @@ void Estimator::add_measurement( const StereoMeasurement &measurement )
                 new SmartStereoProjectionPoseFactor( noise, params ) );
     }
 
-    m_graph.push_back( m_smart_factors [ measurement.landmark_id ] );
+    m_smart_factors [ measurement.landmark_id ]->add(
+        StereoPoint2( measurement.uL, measurement.uR, measurement.v ),
+        X( m_frame ),
+        m_cam_calibration );
 }
 
 /*****************************************************************************/
@@ -200,12 +224,19 @@ void Estimator::optimize()
     m_values.insert( V( m_frame ), m_estimated_state.v() );
     m_values.insert( B( m_frame ), m_previous_bias );
 
+    for ( auto const &[ _, smart_factor_ptr ] : m_smart_factors )
+    {
+        if ( m_use_cam )
+        {
+            m_graph.add( smart_factor_ptr );
+        }
+    }
+
     m_isam2.update( m_graph, m_values );
     m_isam2.update();
 
     m_graph.resize( 0 );
     m_values.clear();
-    // TODO all measurements from cam back to graph
 
     Values estimate = m_isam2.calculateEstimate();
     m_previous_state = NavState(
@@ -215,6 +246,12 @@ void Estimator::optimize()
     m_preintegration->resetIntegrationAndSetBias( m_previous_bias );
 
     Point3 position = estimate.at< Pose3 >( X( m_frame ) ).translation();
+    auto quat = estimate.at< Pose3 >( X( m_frame ) ).rotation().toQuaternion();
+
+    m_output_positions << position.x() << ' ' << position.y() << ' '
+                       << position.z() << ' ' << quat.w() << ' ' << quat.x()
+                       << ' ' << quat.y() << ' ' << quat.z() << endl;
+
     cout << "Position: (" << position.x() << ", " << position.y() << ", "
          << position.z() << ")\n";
 }

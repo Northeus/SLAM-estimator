@@ -52,7 +52,7 @@ int main()
         return 1;
     }
 
-    Estimator estimator( imu_measurement.time );
+    Estimator estimator( imu_measurement.time, true );
     load_imu_measurement( imu_measurement, imu_input );
 
     while ( true )
