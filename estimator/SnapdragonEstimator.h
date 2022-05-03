@@ -4,6 +4,9 @@
 
 /*****************************************************************************/
 
+/**
+ * Wrapper for estimator with Snapdragon configuration.
+ */
 class SnapdragonEstimator : public Estimator
 {
 public:

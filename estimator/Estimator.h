@@ -24,7 +24,8 @@ public:
     Estimator(
         double current_time,
         gtsam::NavState prior_state,
-        gtsam::Cal3_S2Stereo::shared_ptr cam_calibration );
+        gtsam::Cal3_S2Stereo::shared_ptr cam_calibration,
+        std::shared_ptr< gtsam::PreintegratedImuMeasurements > preintegration );
 
     void add_measurement( const IMUMeasurement &measurement );
 

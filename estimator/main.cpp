@@ -14,8 +14,10 @@ int main()
 
     SnapdragonParser parser( "imu.txt", "projections.csv" );
 
+    /* Use time from the first IMU measurement. */
     parser.read_imu( imu_measurement );
     double initial_time = imu_measurement.time;
+
     SnapdragonEstimator estimator( initial_time );
 
     bool has_imu_measurement = parser.read_imu( imu_measurement );

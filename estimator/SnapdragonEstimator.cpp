@@ -1,6 +1,7 @@
 #include "SnapdragonEstimator.h"
 
 #include <gtsam/geometry/Cal3_S2Stereo.h>
+#include <gtsam/navigation/CombinedImuFactor.h>
 #include <gtsam/navigation/NavState.h>
 
 /*****************************************************************************/
@@ -40,7 +41,31 @@ Cal3_S2Stereo::shared_ptr get_cam_calibration()
 
 /*****************************************************************************/
 
+shared_ptr< PreintegratedImuMeasurements > get_preintegration()
+{
+    imuBias::ConstantBias prior_imu_bias;
+    double g = 9.82;
+
+    auto params = PreintegratedCombinedMeasurements::Params::MakeSharedU( g );
+    params->accelerometerCovariance = I_3x3 * 0.1;
+    params->gyroscopeCovariance = I_3x3 * 0.05;
+    params->biasAccCovariance = I_3x3 * 0.02;
+    params->biasOmegaCovariance = I_3x3 * 4e-05;
+    params->integrationCovariance = I_3x3 * 1e-5;
+    params->biasAccOmegaInt = I_6x6 * 1e-3;
+
+    return std::make_shared< PreintegratedImuMeasurements >(
+        params,
+        prior_imu_bias );
+}
+
+/*****************************************************************************/
+
 SnapdragonEstimator::SnapdragonEstimator( double time )
-    : Estimator( time, get_initial_position(), get_cam_calibration() )
+    : Estimator(
+          time,
+          get_initial_position(),
+          get_cam_calibration(),
+          get_preintegration() )
 {
 }
