@@ -12,9 +12,14 @@ find_package(GTSAM REQUIRED)
 
 add_executable(estimator
     estimator/main.cpp
-    estimator/Measurements.h
+    estimator/IMUMeasurement.h
+    estimator/StereoMeasurement.h
     estimator/Estimator.h
     estimator/Estimator.cpp
+    estimator/SnapdragonEstimator.h
+    estimator/SnapdragonEstimator.cpp
+    estimator/SnapdragonParser.h
+    estimator/SnapdragonParser.cpp
 )
 target_link_libraries(estimator gtsam)
 
