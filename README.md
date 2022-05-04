@@ -32,7 +32,3 @@ Then build the program using `cmake .. && make` in the `build` folder.
 After that you can run the estimator using `./estimator`.
 Output will be stored into `positions.csv`.
 
--------------------------------------------------------------------------------
-
-## TODO
- - Wrap up parameters for the estimator.
